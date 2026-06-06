@@ -20,9 +20,9 @@ async def whatsapp_webhook(
     Body: str = Form(...),
     From: str = Form(...)
 ):
-    from scrapers.blinkit import scrape_blinkit
-    from scrapers.zepto import scrape_zepto
-    from scrapers.instamart import scrape_instamart
+    from blinkit import blinkit
+    from scrapers.zepto import zepto
+    from instamart import instamart
     from utils.claude_ai import get_ai_suggestion
 
     user_message = Body.strip().lower()
