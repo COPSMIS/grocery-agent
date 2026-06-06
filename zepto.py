@@ -1,63 +1,45 @@
 import asyncio
-from playwright.async_api import async_playwright
+import httpx
+import os
 
-# ──────────────────────────────────────────────
-# SET YOUR PINCODE HERE
-PINCODE = "110087"
-# ──────────────────────────────────────────────
+PINCODE = os.environ.get("PINCODE", "110087")
 
 async def scrape_zepto(product: str) -> dict | None:
-    """
-    Scrapes Zepto for the top result of a product.
-    Returns: { name, price, unit, url } or None
-    """
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "origin": "https://www.zeptonow.com",
+            "referer": "https://www.zeptonow.com/",
+        }
+        payload = {
+            "query": product,
+            "pageNumber": 0,
+            "pageSize": 5,
+            "intent": False,
+            "requiresKnowledge": False,
+        }
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.zeptonow.com/api/v3/search/",
+                json=payload,
+                headers=headers
             )
-            page = await context.new_page()
-
-            search_url = f"https://www.zeptonow.com/search?query={product.replace(' ', '%20')}"
-            await page.goto(search_url, timeout=30000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(4000)
-
-            # Dismiss location modal if shown
-            try:
-                close_btn = page.locator("button[aria-label='Close'], [class*='modal'] button").first
-                if await close_btn.is_visible():
-                    await close_btn.click()
-                    await page.wait_for_timeout(1000)
-            except:
-                pass
-
-            # Scrape first product card
-            items = await page.locator("[data-testid='product-card'], [class*='ProductCard'], [class*='product-card']").all()
-
+            data = resp.json()
+            items = data.get("items", [])
             if not items:
-                await browser.close()
                 return None
-
-            first = items[0]
-
-            name = await first.locator("[class*='name'], [class*='title'], h3, h4, p").first.inner_text()
-            price_raw = await first.locator("[class*='price'], [class*='Price']").first.inner_text()
-            price = float(''.join(filter(lambda x: x.isdigit() or x == '.', price_raw.split('\n')[0])))
-
-            try:
-                unit = await first.locator("[class*='weight'], [class*='quantity'], [class*='grammage']").first.inner_text()
-            except:
-                unit = ""
-
-            await browser.close()
+            item = items[0].get("productVariant", items[0])
+            name = item.get("name", product)
+            price = float(item.get("sellingPrice", item.get("mrp", 0))) / 100
+            unit = item.get("packageSize", item.get("unitQuantity", ""))
             return {
-                "name": name.strip(),
+                "name": name,
                 "price": price,
-                "unit": unit.strip(),
-                "url": search_url
+                "unit": str(unit),
+                "url": f"https://www.zeptonow.com/search?query={product}"
             }
-
     except Exception as e:
         print(f"[Zepto] Error: {e}")
         return None
