@@ -2,7 +2,7 @@ import asyncio
 import httpx
 import os
 
-PINCODE = os.environ.get("PINCODE", "110001")
+PINCODE = os.environ.get("PINCODE", "110087")
 
 async def scrape_instamart(product: str) -> dict | None:
     try:
