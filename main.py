@@ -1,10 +1,12 @@
-from fastapi import FastAPI, Form, Request
+import sys
+import os
+
+# MUST be before any local imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from fastapi import FastAPI, Form
 from fastapi.responses import PlainTextResponse
 from twilio.twiml.messaging_response import MessagingResponse
-from scrapers.blinkit import scrape_blinkit
-from scrapers.zepto import scrape_zepto
-from scrapers.instamart import scrape_instamart
-from utils.claude_ai import get_ai_suggestion
 import asyncio
 
 app = FastAPI()
@@ -18,12 +20,15 @@ async def whatsapp_webhook(
     Body: str = Form(...),
     From: str = Form(...)
 ):
+    from scrapers.blinkit import scrape_blinkit
+    from scrapers.zepto import scrape_zepto
+    from scrapers.instamart import scrape_instamart
+    from utils.claude_ai import get_ai_suggestion
+
     user_message = Body.strip().lower()
     response = MessagingResponse()
     msg = response.message()
 
-    # Parse product from message
-    # Supports: "compare tomatoes", "price onion", "check milk 1l"
     keywords = ["compare", "price", "check", "find"]
     product = user_message
     for kw in keywords:
@@ -43,7 +48,6 @@ async def whatsapp_webhook(
 
     msg.body(f"🔍 Searching prices for *{product}*...\nPlease wait a moment!")
 
-    # Run scrapers in parallel
     try:
         results = await asyncio.gather(
             scrape_blinkit(product),
@@ -52,11 +56,10 @@ async def whatsapp_webhook(
             return_exceptions=True
         )
 
-        blinkit_data  = results[0] if not isinstance(results[0], Exception) else None
-        zepto_data    = results[1] if not isinstance(results[1], Exception) else None
+        blinkit_data   = results[0] if not isinstance(results[0], Exception) else None
+        zepto_data     = results[1] if not isinstance(results[1], Exception) else None
         instamart_data = results[2] if not isinstance(results[2], Exception) else None
 
-        # Build price summary
         price_data = {}
         if blinkit_data:
             price_data["Blinkit"] = blinkit_data
@@ -69,7 +72,6 @@ async def whatsapp_webhook(
             msg.body(f"❌ Sorry, couldn't find *{product}* on any platform right now. Try a different name.")
             return str(response)
 
-        # Get AI suggestion
         suggestion = await get_ai_suggestion(product, price_data)
         msg.body(suggestion)
 
