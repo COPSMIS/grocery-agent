@@ -1,45 +1,40 @@
-import asyncio
+# Zepto price fetcher via SerpApi Google Shopping
 import httpx
 import os
 
-PINCODE = os.environ.get("PINCODE", "110087")
+SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "")
 
 async def scrape_zepto(product: str) -> dict | None:
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "origin": "https://www.zeptonow.com",
-            "referer": "https://www.zeptonow.com/",
-        }
-        payload = {
-            "query": product,
-            "pageNumber": 0,
-            "pageSize": 5,
-            "intent": False,
-            "requiresKnowledge": False,
-        }
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://api.zeptonow.com/api/v3/search/",
-                json=payload,
-                headers=headers
+            resp = await client.get(
+                "https://serpapi.com/search",
+                params={
+                    "engine": "google_shopping",
+                    "q": f"{product} zepto grocery",
+                    "api_key": SERPAPI_KEY,
+                    "gl": "in",
+                    "hl": "en",
+                    "num": 3,
+                }
             )
             data = resp.json()
-            items = data.get("items", [])
-            if not items:
-                return None
-            item = items[0].get("productVariant", items[0])
-            name = item.get("name", product)
-            price = float(item.get("sellingPrice", item.get("mrp", 0))) / 100
-            unit = item.get("packageSize", item.get("unitQuantity", ""))
-            return {
-                "name": name,
-                "price": price,
-                "unit": str(unit),
-                "url": f"https://www.zeptonow.com/search?query={product}"
-            }
+            results = data.get("shopping_results", [])
+            for r in results:
+                if "zepto" in r.get("source", "").lower():
+                    price_str = r.get("price", "0").replace("₹", "").replace(",", "").strip()
+                    try:
+                        price = float(price_str)
+                    except:
+                        price = 0
+                    if price > 0:
+                        return {
+                            "name": r.get("title", product),
+                            "price": price,
+                            "unit": "",
+                            "url": r.get("link", "https://www.zeptonow.com")
+                        }
+        return None
     except Exception as e:
         print(f"[Zepto] Error: {e}")
         return None
