@@ -1,62 +1,56 @@
 import asyncio
-from playwright.async_api import async_playwright
+import httpx
+import os
+
+PINCODE = os.environ.get("PINCODE", "110001")
 
 async def scrape_instamart(product: str) -> dict | None:
-    """
-    Scrapes Swiggy Instamart for the top result of a product.
-    Returns: { name, price, unit, url } or None
-    """
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "__fetch_req__": "true",
+            "origin": "https://www.swiggy.com",
+            "referer": "https://www.swiggy.com/instamart",
+        }
+        params = {
+            "pageNumber": 0,
+            "searchResultsOffset": 0,
+            "layoutPageType": "INSTAMART_AUTO_SUGGEST_SEARCH_PAGE",
+            "query": product,
+            "ageConsent": "false",
+            "pageType": "INSTAMART_SEARCH_PAGE",
+        }
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://www.swiggy.com/api/instamart/home",
+                params=params,
+                headers=headers
             )
-            page = await context.new_page()
-
-            search_url = f"https://www.swiggy.com/instamart/search?query={product.replace(' ', '%20')}"
-            await page.goto(search_url, timeout=30000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(4000)
-
-            # Dismiss any popups
+            data = resp.json()
+            # Navigate Swiggy's nested response
             try:
-                popup = page.locator("[class*='modal'] [class*='close'], [aria-label='close']").first
-                if await popup.is_visible():
-                    await popup.click()
-                    await page.wait_for_timeout(1000)
-            except:
+                widgets = data["data"]["widgets"]
+                for w in widgets:
+                    items = w.get("data", {}).get("items", [])
+                    if items:
+                        item = items[0]
+                        variations = item.get("variations", [item])
+                        v = variations[0]
+                        name = v.get("display_name", item.get("display_name", product))
+                        price = float(v.get("price", {}).get("offer_price", 0)) / 100
+                        unit = v.get("quantity", "")
+                        if price > 0:
+                            return {
+                                "name": name,
+                                "price": price,
+                                "unit": str(unit),
+                                "url": f"https://www.swiggy.com/instamart/search?query={product}"
+                            }
+            except (KeyError, IndexError, TypeError):
                 pass
-
-            # Scrape first product card
-            items = await page.locator("[class*='ItemWidget'], [class*='product-card'], [data-testid='item-widget']").all()
-
-            if not items:
-                # Fallback
-                items = await page.locator("div[class*='styles_container']").all()
-
-            if not items:
-                await browser.close()
-                return None
-
-            first = items[0]
-
-            name = await first.locator("[class*='name'], [class*='title'], [class*='Name'], div[class*='ItemName']").first.inner_text()
-            price_raw = await first.locator("[class*='price'], [class*='Price'], [class*='rupee']").first.inner_text()
-            price = float(''.join(filter(lambda x: x.isdigit() or x == '.', price_raw.split('\n')[0])))
-
-            try:
-                unit = await first.locator("[class*='weight'], [class*='quantity'], [class*='grammage'], [class*='unit']").first.inner_text()
-            except:
-                unit = ""
-
-            await browser.close()
-            return {
-                "name": name.strip(),
-                "price": price,
-                "unit": unit.strip(),
-                "url": search_url
-            }
-
+            return None
     except Exception as e:
         print(f"[Instamart] Error: {e}")
         return None
