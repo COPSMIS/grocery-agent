@@ -4,9 +4,9 @@ services:
     runtime: python
     pythonVersion: "3.11.9"
     buildCommand: pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd /opt/render/project/src && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GEMINI_API_KEY
-        sync: false        # You set this manually in Render dashboard
+        sync: false
       - key: PINCODE
-        value: "110001"   # Change to your pincode
+        value: "110001"
