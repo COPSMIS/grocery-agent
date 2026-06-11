@@ -26,8 +26,8 @@ Write a short WhatsApp message (use emojis) that:
 3. Gives a 1-line recommendation
 Keep it under 200 words. Use *bold* for emphasis."""
 
-        # Try gemini-1.5-flash first (higher free quota)
-        for model_name in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-pro"]:
+        # Try gemini-2.0-flash-lite first (higher free quota)
+        for model_name in ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash-latest"]:
             try:
                 model = genai.GenerativeModel(model_name)
                 response = model.generate_content(prompt)
